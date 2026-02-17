@@ -6,11 +6,15 @@ import { Message } from "../types";
 interface ChatContainerProps {
   messages: Message[];
   setIsTypingFalse: any;
+  userLabel?: string;
+  assistantLabel?: string;
 }
 
 const ChatContainer: FC<ChatContainerProps> = ({
   messages,
-  setIsTypingFalse
+  setIsTypingFalse,
+  userLabel = "You",
+  assistantLabel = "Assistant"
 }) => {
   const messagesContainerRef = useRef<null | HTMLDivElement>(null);
 
@@ -39,7 +43,9 @@ const ChatContainer: FC<ChatContainerProps> = ({
         sx={{
           flexGrow: 1,
           width: "100%",
-          overflow: "auto"
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column"
         }}
       >
         {messages.map((message, index) => (
@@ -49,6 +55,8 @@ const ChatContainer: FC<ChatContainerProps> = ({
             type={message.type}
             role={message.role}
             setIsTypingFalse={setIsTypingFalse}
+            userLabel={userLabel}
+            assistantLabel={assistantLabel}
           />
         ))}
       </Box>

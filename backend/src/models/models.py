@@ -11,6 +11,8 @@ class Project(Document):
     loading_message: Optional[str] = None
     active: bool
     openai_backend: Optional[str] = "azure"
+    user_label: Optional[str] = None
+    assistant_label: Optional[str] = None
 
 
 class LlmCall(Document):

@@ -7,6 +7,8 @@ interface ChatMessageProps {
   content: string;
   role: "assistant" | "user";
   setIsTypingFalse: any;
+  userLabel?: string;
+  assistantLabel?: string;
 }
 
 /**
@@ -126,6 +128,10 @@ const processTextPipeline = (text: string, steps: string[]) => {
         return `<h${level}>${headingContent}</h${level}>`;
       });
     },
+    newlines: input => {
+      // Convert newlines to <br/> tags for proper line breaks
+      return input.replace(/\n/g, "<br/>");
+    },
     trim: input => input.trim()
   };
 
@@ -163,13 +169,15 @@ const ChatMessage: FC<ChatMessageProps> = ({
   content,
   type,
   role,
-  setIsTypingFalse
+  setIsTypingFalse,
+  userLabel = "You",
+  assistantLabel = "Assistant"
 }) => {
   const [displayedText, setDisplayedText] = useState("");
   const [index, setIndex] = useState(0);
   const lastTimeout = useRef<any | null>(null);
 
-  // Typing effect
+  // Display content immediately (no typing animation)
   useEffect(() => {
     if (!content) {
       console.warn("ChatMessage: `content` is empty or undefined.");
@@ -182,56 +190,47 @@ const ChatMessage: FC<ChatMessageProps> = ({
       } else {
         setDisplayedText(content);
       }
-      setIsTypingFalse?.();
     } else {
-      if (index < content.length) {
-        const timer = setTimeout(() => {
-          setDisplayedText(prev => prev + content[index]);
-          setIndex(prev => prev + 1);
-        }, 20);
-        lastTimeout.current = timer;
-        return () => clearTimeout(timer);
-      } else if (index === content.length && content.length > 0) {
-        // ✅ Schedule one final timeout after the last character
-        lastTimeout.current = setTimeout(() => {
-          setIsTypingFalse?.();
-        }, 100); // enough to ensure render completes
-      }
+      // Display assistant content immediately
+      setDisplayedText(content);
     }
-
-    // Cleanup in case component unmounts
-    return () => {
-      if (lastTimeout.current) clearTimeout(lastTimeout.current);
-    };
-  }, [index, content, role]);
+    setIsTypingFalse?.();
+  }, [content, role]);
 
   // Only apply the formatting pipeline if the role is "assistant"
-  const pipelineSteps = ["hr", "bold", "italic", "headings", "trim"];
+  const pipelineSteps = ["hr", "bold", "italic", "headings", "trim", "newlines"];
 
+  let processedParts: any[] = [];
   if (role === "assistant") {
     let tempDisplayedText = displayedText
       .replace("<think>\n\n</think>", "")
       .replace(/^\n\n/, "");
 
-    const processedParts = processText(tempDisplayedText, pipelineSteps);
+    processedParts = processText(tempDisplayedText, pipelineSteps);
   }
   return (
     <Box
       sx={{
-        bgcolor: role === "user" ? "lightblue" : "lightyellow",
+        bgcolor: role === "user" ? "#DCF8C6" : "#FFFFFF",
         color: "black",
-        p: 3,
+        p: 2,
         m: 1,
-        borderRadius: 5,
+        borderRadius: 3,
         wordWrap: "break-word",
         overflow: "visible",
         textOverflow: "ellipsis",
-        whiteSpace: "pre-wrap"
+        whiteSpace: "pre-wrap",
+        maxWidth: "70%",
+        alignSelf: role === "user" ? "flex-end" : "flex-start",
+        marginLeft: role === "user" ? "auto" : "0",
+        marginRight: role === "user" ? "0" : "auto",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+        border: "1px solid #e0e0e0"
       }}
     >
       <span style={{ fontFamily: "monospace" }}>
         <span style={{ fontWeight: "bold" }}>
-          {role === "user" ? "You" : "Assistant"}:
+          {role === "user" ? userLabel : assistantLabel}:
         </span>{" "}
         {role === "assistant" &&
           processedParts.map((part, idx) => {

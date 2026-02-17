@@ -17,6 +17,56 @@ const ChatPage: React.FC = () => {
 
   const [urlParams, setUrlParams] = useState<{ [key: string]: any }>({});
   const [projectInfo, setProjectInfo] = useState(null);
+  const [scenarioInfo, setScenarioInfo] = useState<any>(null);
+
+  // Fetch scenario info from aLLMa
+  const fetchScenarioInfo = async (participantId: string) => {
+    try {
+      // aLLMa wrapper is accessible from browser at localhost:11435
+      const allmaUrl = "http://localhost:11435";
+      const response = await fetch(`${allmaUrl}/v1/session/${participantId}/info`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Scenario info:", data);
+        if (data.exists) {
+          setScenarioInfo(data);
+        }
+      }
+    } catch (e) {
+      console.log("Could not fetch scenario info:", e);
+    }
+  };
+
+  // Initialize session and get scenario (before any messages)
+  const initializeSession = async (participantId: string, debug: boolean = false) => {
+    try {
+      const allmaUrl = "http://localhost:11435";
+      // Send a special init request to create the session
+      const response = await fetch(`${allmaUrl}/v1/session/${participantId}/init`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participant_id: participantId, debug: debug })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Session initialized:", data);
+        if (data.scenario_title) {
+          setScenarioInfo(data);
+        }
+        // If AI should speak first, add the opening message
+        if (data.ai_speaks_first && data.opening_message) {
+          setMessages(prev => [...prev, {
+            role: "assistant",
+            content: data.opening_message,
+            type: "text",
+            timestamp: new Date().toISOString()
+          }]);
+        }
+      }
+    } catch (e) {
+      console.log("Could not initialize session:", e);
+    }
+  };
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -115,7 +165,15 @@ const ChatPage: React.FC = () => {
     });
   }, []);
 
-  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+  // Initialize session and fetch scenario when participant_id is known
+  useEffect(() => {
+    if (urlParams.participant_id && !scenarioInfo) {
+      const debugMode = urlParams.debug === "true" || urlParams.debug === "1";
+      initializeSession(urlParams.participant_id, debugMode);
+    }
+  }, [urlParams.participant_id, urlParams.debug]);
+
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setNewMessage(event.target.value);
   };
 
@@ -220,9 +278,50 @@ const ChatPage: React.FC = () => {
           margin: "auto"
         }}
       >
+        {/* Scenario Header */}
+        {scenarioInfo && (
+          <Box
+            sx={{
+              bgcolor: "#f5f5f5",
+              p: 2,
+              borderBottom: "1px solid #e0e0e0",
+              textAlign: "center"
+            }}
+          >
+            <div style={{ fontWeight: "bold", fontSize: "1.1em", marginBottom: "0.5em" }}>
+              {scenarioInfo.scenario_title}
+            </div>
+            <div style={{ fontSize: "0.9em", color: "#666", fontStyle: "italic" }}>
+              {scenarioInfo.scenario_description}
+            </div>
+            <div style={{ fontSize: "0.85em", color: "#888", marginTop: "0.5em" }}>
+              You are <strong>{scenarioInfo.user_role}</strong>, talking to <strong>{scenarioInfo.ai_character}</strong>
+            </div>
+            <div style={{ fontSize: "0.85em", color: "#555", marginTop: "0.5em", fontWeight: 500 }}>
+              {scenarioInfo.ai_speaks_first
+                ? `${scenarioInfo.ai_character} starts the conversation.`
+                : "You start the conversation."}
+            </div>
+            {scenarioInfo.debug_mode && (
+              <div style={{
+                fontSize: "0.75em",
+                color: "#fff",
+                backgroundColor: "#d32f2f",
+                padding: "2px 8px",
+                borderRadius: "4px",
+                display: "inline-block",
+                marginTop: "0.5em"
+              }}>
+                DEBUG MODE
+              </div>
+            )}
+          </Box>
+        )}
         <ChatContainer
           messages={messages}
           setIsTypingFalse={setIsTypingFalse}
+          userLabel={scenarioInfo?.user_role ? `${scenarioInfo.user_role} (You)` : (urlParams.user_label || projectInfo?.user_label || "You")}
+          assistantLabel={scenarioInfo?.ai_character || urlParams.assistant_label || projectInfo?.assistant_label || "Assistant"}
         />
         <div
           style={{

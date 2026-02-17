@@ -1,10 +1,10 @@
-import React, { ChangeEvent, FormEvent } from "react";
+import React, { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { TextField, Button, Box } from "@mui/material";
 import UploadImage from "./UploadImage";
 
 interface InputFormProps {
   newMessage: string;
-  handleInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  handleInputChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isTyping: boolean;
   setIsTyping: () => void;
@@ -21,6 +21,21 @@ const InputForm: React.FC<InputFormProps> = ({
 }) => {
   const removeImage = () => {
     setImageFile(null);
+  };
+
+  // Handle Enter to send, Shift+Enter for newline
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!isTyping && newMessage.trim().length > 0) {
+        // Create a synthetic form event and submit
+        const form = event.currentTarget.closest("form");
+        if (form) {
+          form.requestSubmit();
+        }
+      }
+    }
+    // Shift+Enter will naturally insert a newline in multiline TextField
   };
 
   return (
@@ -67,8 +82,16 @@ const InputForm: React.FC<InputFormProps> = ({
         }}
         onSubmit={handleSubmit}
       >
-        <TextField value={newMessage} onChange={handleInputChange} fullWidth />
-        <Button type="submit" disabled={isTyping}>
+        <TextField
+          value={newMessage}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          fullWidth
+          multiline
+          maxRows={4}
+          placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+        />
+        <Button type="submit" disabled={isTyping || newMessage.trim().length === 0}>
           Send
         </Button>{" "}
         {/* Use isTyping here */}

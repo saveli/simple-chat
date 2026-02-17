@@ -375,6 +375,8 @@ async def fetch_project_info(sid, data):
             "system_message": project.system_message,
             "loading_message": project.loading_message,
             "active": project.active,
+            "user_label": getattr(project, 'user_label', None),
+            "assistant_label": getattr(project, 'assistant_label', None),
         },
         to=sid,
     )

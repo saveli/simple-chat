@@ -137,8 +137,9 @@ async def get_openai_backend(project_id):
 
     project = projects[0]
 
-    if "openai_backend" in project:
-        return project.openai_backend
-
+    # Use getattr to properly access Pydantic model attributes
+    backend = getattr(project, 'openai_backend', None)
+    if backend:
+        return backend
     else:
         return "azure"  # default mode

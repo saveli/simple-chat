@@ -93,7 +93,7 @@ def init_model_endpoint(
             logger.debug(
                 "Standard OpenAI base URL detected... Using AsyncOpenAI client."
             )
-            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
         return client
 
     if model in models["together_ai"]:
@@ -136,19 +136,37 @@ async def call_model(
         )
 
     try:
-        response = await completion_with_backoff(
-            client,
-            model=model,
-            messages=messages,
-            temperature=0.7,
-            stream=True,
-        )
+        # Pass participant_id as 'user' field for session identification in aLLMa
+        # Check if this is an aLLMa model - use non-streaming for instant response
+        is_allma = model.startswith("allma")
+
+        completion_kwargs = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.7,
+            "stream": not is_allma,  # Disable streaming for aLLMa (it sends everything at once)
+        }
+        if participant_id:
+            completion_kwargs["user"] = participant_id
+
+        response = await completion_with_backoff(client, **completion_kwargs)
 
         full_response = ""
-        newMessage = True
 
-        if f"together_ai-{model}" in models["together_ai"]:
+        # For aLLMa: non-streaming - send entire response at once
+        if is_allma:
+            full_response = response.choices[0].message.content or ""
+            response_data = {
+                "type": "message",
+                "data": await create_message(
+                    content=full_response,
+                    role="assistant",
+                ),
+            }
+            await sio_server.emit("message_to_client", response_data, sid)
+        elif f"together_ai-{model}" in models["together_ai"]:
             # model in together.ai is not working with "async for" loop
+            newMessage = True
             for chunk in response:
                 text_to_send_in_the_current_chunk = ""
                 if len(chunk.choices) > 0:
@@ -178,6 +196,7 @@ async def call_model(
 
                     await sio_server.emit("message_to_client", response_data, sid)
         else:
+            newMessage = True
             async for chunk in response:
                 text_to_send_in_the_current_chunk = ""
                 if len(chunk.choices) > 0:
