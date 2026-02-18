@@ -1,7 +1,7 @@
-import React, { useState, ChangeEvent, FormEvent, useEffect } from "react";
+import React, { useState, useRef, ChangeEvent, FormEvent, useEffect, useCallback } from "react";
 import ChatContainer from "./ChatContainer";
 import ChatInputForm from "./ChatInputForm";
-import { Box } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
 import { Message } from "../types";
 import BlinkingDots from "./BlinkingDots";
 import { socket } from "../socket";
@@ -18,6 +18,17 @@ const ChatPage: React.FC = () => {
   const [urlParams, setUrlParams] = useState<{ [key: string]: any }>({});
   const [projectInfo, setProjectInfo] = useState(null);
   const [scenarioInfo, setScenarioInfo] = useState<any>(null);
+
+  // LimeSurvey integration state
+  const [chatEnded, setChatEnded] = useState<boolean>(false);
+  const chatEndedRef = useRef<boolean>(false); // synchronous guard against multiple endChat calls
+  const [chatStartTime, setChatStartTime] = useState<number | null>(null);
+  const [minTimeReached, setMinTimeReached] = useState<boolean>(false);
+  const maxTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const minTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Derived: is this in LimeSurvey iframe mode?
+  const isLimeSurvey = urlParams.limesurvey === "1" || urlParams.limesurvey === "true";
 
   // Fetch scenario info from aLLMa
   const fetchScenarioInfo = async (participantId: string) => {
@@ -41,11 +52,17 @@ const ChatPage: React.FC = () => {
   const initializeSession = async (participantId: string, debug: boolean = false) => {
     try {
       const allmaUrl = "http://localhost:11435";
+      const round = parseInt(urlParams.round || "1");
       // Send a special init request to create the session
+      const initBody: any = { participant_id: participantId, debug: debug, round: round };
+      const maxTime = parseInt(urlParams.max_time || "0");
+      const maxMessages = parseInt(urlParams.max_messages || "0");
+      if (maxTime > 0) initBody.max_time = maxTime;
+      if (maxMessages > 0) initBody.max_messages = maxMessages;
       const response = await fetch(`${allmaUrl}/v1/session/${participantId}/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participant_id: participantId, debug: debug })
+        body: JSON.stringify(initBody)
       });
       if (response.ok) {
         const data = await response.json();
@@ -66,6 +83,75 @@ const ChatPage: React.FC = () => {
     } catch (e) {
       console.log("Could not initialize session:", e);
     }
+  };
+
+  // End chat handler (idempotent) — chatEndedRef gives synchronous protection
+  // because React state updates are async and may fire multiple times per render cycle
+  const endChat = useCallback(async (reason: string) => {
+    if (chatEndedRef.current) return;
+    chatEndedRef.current = true;
+    setChatEnded(true);
+
+    // Clear timers
+    if (maxTimeTimerRef.current) clearTimeout(maxTimeTimerRef.current);
+    if (minTimeTimerRef.current) clearTimeout(minTimeTimerRef.current);
+
+    // Add system message locally
+    setMessages(prev => [...prev, {
+      role: "system",
+      content: "The chat session has ended.",
+      type: "text",
+      timestamp: new Date().toISOString()
+    }]);
+
+    const durationSeconds = chatStartTime
+      ? Math.round((Date.now() - chatStartTime) / 1000)
+      : 0;
+
+    // Notify simple-chat backend
+    socket.emit("chat_ended", {
+      session_id: sessionId,
+      participant_id: participantId,
+      reason: reason,
+      message_count: messages.length,
+      duration_seconds: durationSeconds
+    });
+
+    // Notify aLLMa wrapper to persist interaction log
+    try {
+      const allmaUrl = "http://localhost:11435";
+      const pid = urlParams.participant_id || participantId;
+      const round = parseInt(urlParams.round || "1");
+      await fetch(`${allmaUrl}/v1/session/${pid}/end`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, round })
+      });
+    } catch (e) {
+      console.log("Could not notify aLLMa of session end:", e);
+    }
+
+    // Notify parent frame (LimeSurvey)
+    if (isLimeSurvey) {
+      window.parent.postMessage({
+        type: "simple-chat-event",
+        event: "chat_completed",
+        data: {
+          conversation_id: sessionId,
+          participant_id: participantId,
+          message_count: messages.length,
+          duration_seconds: durationSeconds,
+          reason: reason
+        }
+      }, "*");
+    }
+  }, [chatStartTime, sessionId, participantId, messages.length, urlParams, isLimeSurvey]);
+
+  const handleContinueClick = () => {
+    window.parent.postMessage({
+      type: "simple-chat-event",
+      event: "continue_clicked"
+    }, "*");
   };
 
   useEffect(() => {
@@ -117,6 +203,9 @@ const ChatPage: React.FC = () => {
       setIsTyping(false); // user can send message after getting the session id.
       setSessionId(data.session_id);
       await sending_initial_message(data.session_id);
+
+      // Start chat timers
+      setChatStartTime(Date.now());
     });
 
     socket.on("set_participant_id", data => {
@@ -163,7 +252,47 @@ const ChatPage: React.FC = () => {
       console.log("project_info event: ", data);
       setProjectInfo(data);
     });
+
+    return () => {
+      // Cleanup timers on unmount
+      if (maxTimeTimerRef.current) clearTimeout(maxTimeTimerRef.current);
+      if (minTimeTimerRef.current) clearTimeout(minTimeTimerRef.current);
+    };
   }, []);
+
+  // Start max_time and min_time timers when chat begins
+  useEffect(() => {
+    if (!chatStartTime || chatEnded) return;
+
+    const maxTime = parseInt(urlParams.max_time || "0");
+    if (maxTime > 0) {
+      maxTimeTimerRef.current = setTimeout(() => {
+        endChat("max_time");
+      }, maxTime * 1000);
+    }
+
+    const minTime = parseInt(urlParams.min_time || "0");
+    if (minTime > 0) {
+      minTimeTimerRef.current = setTimeout(() => {
+        setMinTimeReached(true);
+      }, minTime * 1000);
+    } else {
+      setMinTimeReached(true); // No min_time = always reached
+    }
+  }, [chatStartTime, chatEnded, urlParams.max_time, urlParams.min_time, endChat]);
+
+  // Check max_messages after each message arrives
+  useEffect(() => {
+    if (chatEnded) return;
+    const maxMessages = parseInt(urlParams.max_messages || "0");
+    if (maxMessages > 0 && messages.length >= maxMessages) {
+      // Only end after assistant's reply (last message should be assistant)
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        endChat("max_messages");
+      }
+    }
+  }, [messages, chatEnded, urlParams.max_messages, endChat]);
 
   // Initialize session and fetch scenario when participant_id is known
   useEffect(() => {
@@ -178,10 +307,7 @@ const ChatPage: React.FC = () => {
   };
 
   const handleSendClick = async () => {
-    // Check if newMessage length is greater than 0
-    if (newMessage.length === 0) {
-      return;
-    }
+    if (newMessage.length === 0 || chatEnded) return;
 
     let message: Message = {
       role: "user",
@@ -244,8 +370,6 @@ const ChatPage: React.FC = () => {
 
     console.log("ChatPage.handleSendClick", message);
 
-    // sendMessage(message);
-
     setImageFile(null);
     setNewMessage("");
     setIsTyping(true);
@@ -256,16 +380,14 @@ const ChatPage: React.FC = () => {
     handleSendClick();
   };
 
-  // useEffect(() => {
-  //   const lastMessage = messages[messages.length - 1];
-  //   if (messages.length && lastMessage.role === "assistant") {
-  //     setIsTyping(false);
-  //   }
-  // }, [messages]);
-
   const setIsTypingFalse = () => {
     setIsTyping(false);
   };
+
+  // Derived: can the user end the chat early?
+  const minMessages = parseInt(urlParams.min_messages || "0");
+  const canEndChat = isLimeSurvey && !chatEnded && minTimeReached && messages.length >= minMessages;
+
   return (
     <>
       <Box
@@ -285,7 +407,8 @@ const ChatPage: React.FC = () => {
               bgcolor: "#f5f5f5",
               p: 2,
               borderBottom: "1px solid #e0e0e0",
-              textAlign: "center"
+              textAlign: "center",
+              position: "relative"
             }}
           >
             <div style={{ fontWeight: "bold", fontSize: "1.1em", marginBottom: "0.5em" }}>
@@ -315,6 +438,23 @@ const ChatPage: React.FC = () => {
                 DEBUG MODE
               </div>
             )}
+            {/* End Chat link in header */}
+            {canEndChat && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "8px",
+                  right: "12px",
+                  fontSize: "0.8em",
+                  color: "#999",
+                  cursor: "pointer",
+                  textDecoration: "underline"
+                }}
+                onClick={() => endChat("user_ended")}
+              >
+                End Chat
+              </div>
+            )}
           </Box>
         )}
         <ChatContainer
@@ -323,30 +463,55 @@ const ChatPage: React.FC = () => {
           userLabel={scenarioInfo?.user_role ? `${scenarioInfo.user_role} (You)` : (urlParams.user_label || projectInfo?.user_label || "You")}
           assistantLabel={scenarioInfo?.ai_character || urlParams.assistant_label || projectInfo?.assistant_label || "Assistant"}
         />
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "left",
-            alignItems: "center",
-            marginLeft: "1rem",
-            marginBottom: "0.65rem"
-          }}
-        >
-          {isTyping && (
-            <>
-              <span>{projectInfo?.loading_message}</span>
-              <BlinkingDots />
-            </>
-          )}
-        </div>
-        <ChatInputForm
-          newMessage={newMessage}
-          handleInputChange={handleInputChange}
-          handleSubmit={handleSubmit}
-          isTyping={isTyping}
-          setImageFile={setImageFile}
-          imageFile={imageFile}
-        />
+
+        {/* Chat ended state */}
+        {chatEnded ? (
+          isLimeSurvey ? (
+            <Box sx={{ p: 3, textAlign: "center" }}>
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={handleContinueClick}
+                sx={{ mt: 1, px: 4, py: 1.5, fontSize: "1.1em" }}
+              >
+                Continue to Survey
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ p: 2, textAlign: "center" }}>
+              <Typography color="text.secondary">Chat session has ended.</Typography>
+            </Box>
+          )
+        ) : (
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "left",
+                alignItems: "center",
+                marginLeft: "1rem",
+                marginBottom: "0.65rem"
+              }}
+            >
+              {isTyping && (
+                <>
+                  <span>{projectInfo?.loading_message}</span>
+                  <BlinkingDots />
+                </>
+              )}
+            </div>
+            <ChatInputForm
+              newMessage={newMessage}
+              handleInputChange={handleInputChange}
+              handleSubmit={handleSubmit}
+              isTyping={isTyping}
+              setImageFile={setImageFile}
+              imageFile={imageFile}
+              onEndChat={canEndChat ? () => endChat("user_ended") : undefined}
+            />
+          </>
+        )}
       </Box>
     </>
   );

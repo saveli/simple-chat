@@ -356,6 +356,25 @@ async def image_message(sid, data):
 
 
 @sio_server.event
+async def chat_ended(sid, data):
+    """Record chat end reason in the conversation transcript"""
+    logger.info(f"chat_ended event from sid: {sid}, reason: {data.get('reason')}")
+
+    the_conversation = await Conversations.find_one(
+        Conversations.conversation_id == data.get("session_id")
+    )
+    if the_conversation:
+        end_message = ConversationMessage(
+            content=f"[Chat ended: {data.get('reason', 'unknown')}]",
+            role="system",
+            timestamp=str(datetime.now()),
+            type="text",
+        )
+        the_conversation.messages.append(end_message)
+        await the_conversation.save()
+
+
+@sio_server.event
 async def fetch_project_info(sid, data):
     project_id = data.get("project_id")
 

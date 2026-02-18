@@ -7,9 +7,10 @@ interface InputFormProps {
   handleInputChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isTyping: boolean;
-  setIsTyping: () => void;
+  setIsTyping?: () => void;
   setImageFile: (src: string) => void;
   imageFile: string;
+  onEndChat?: () => void;
 }
 const InputForm: React.FC<InputFormProps> = ({
   newMessage,
@@ -17,7 +18,8 @@ const InputForm: React.FC<InputFormProps> = ({
   handleSubmit,
   isTyping,
   setImageFile,
-  imageFile
+  imageFile,
+  onEndChat
 }) => {
   const removeImage = () => {
     setImageFile(null);
@@ -94,7 +96,15 @@ const InputForm: React.FC<InputFormProps> = ({
         <Button type="submit" disabled={isTyping || newMessage.trim().length === 0}>
           Send
         </Button>{" "}
-        {/* Use isTyping here */}
+        {onEndChat && (
+          <Button
+            onClick={onEndChat}
+            size="small"
+            sx={{ ml: 0.5, color: "#999", fontSize: "0.8em", textTransform: "none" }}
+          >
+            End Chat
+          </Button>
+        )}
         <UploadImage isTyping={isTyping} setImageFile={setImageFile} />
       </Box>
     </Box>
