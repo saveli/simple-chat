@@ -1,6 +1,10 @@
 # Base stage
 FROM node:lts-buster AS build
 
+# Backend URL baked into Parcel bundle at build time
+ARG REACT_APP_BACKEND_URL=http://localhost:8000
+ENV REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
+
 # Set working directory
 WORKDIR /usr/src/app
 

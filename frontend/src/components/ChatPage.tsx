@@ -33,8 +33,7 @@ const ChatPage: React.FC = () => {
   // Fetch scenario info from aLLMa
   const fetchScenarioInfo = async (participantId: string) => {
     try {
-      // aLLMa wrapper is accessible from browser at localhost:11435
-      const allmaUrl = "http://localhost:11435";
+      const allmaUrl = window.location.origin;
       const response = await fetch(`${allmaUrl}/v1/session/${participantId}/info`);
       if (response.ok) {
         const data = await response.json();
@@ -51,7 +50,7 @@ const ChatPage: React.FC = () => {
   // Initialize session and get scenario (before any messages)
   const initializeSession = async (participantId: string, debug: boolean = false) => {
     try {
-      const allmaUrl = "http://localhost:11435";
+      const allmaUrl = window.location.origin;
       const round = parseInt(urlParams.round || "1");
       // Send a special init request to create the session
       const initBody: any = { participant_id: participantId, debug: debug, round: round };
@@ -119,7 +118,7 @@ const ChatPage: React.FC = () => {
 
     // Notify aLLMa wrapper to persist interaction log
     try {
-      const allmaUrl = "http://localhost:11435";
+      const allmaUrl = window.location.origin;
       const pid = urlParams.participant_id || participantId;
       const round = parseInt(urlParams.round || "1");
       await fetch(`${allmaUrl}/v1/session/${pid}/end`, {
