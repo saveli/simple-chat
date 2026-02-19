@@ -211,7 +211,7 @@ const ChatMessage: FC<ChatMessageProps> = ({
   return (
     <Box
       sx={{
-        bgcolor: role === "user" ? "#DCF8C6" : "#FFFFFF",
+        bgcolor: role === "user" ? "#D6D6D6" : "#FFFFFF",
         color: "black",
         p: 2,
         m: 1,

@@ -53,7 +53,14 @@ const ChatPage: React.FC = () => {
       const allmaUrl = window.location.origin;
       const round = parseInt(urlParams.round || "1");
       // Send a special init request to create the session
-      const initBody: any = { participant_id: participantId, debug: debug, round: round };
+      const debugLevel = parseInt(urlParams.debug_level || (debug ? "2" : "0"));
+      const condition = urlParams.condition || "alma";
+      const initBody: any = {
+        participant_id: participantId,
+        debug_level: debugLevel,
+        round: round,
+        condition: condition
+      };
       const maxTime = parseInt(urlParams.max_time || "0");
       const maxMessages = parseInt(urlParams.max_messages || "0");
       if (maxTime > 0) initBody.max_time = maxTime;
@@ -417,7 +424,7 @@ const ChatPage: React.FC = () => {
               {scenarioInfo.scenario_description}
             </div>
             <div style={{ fontSize: "0.85em", color: "#888", marginTop: "0.5em" }}>
-              You are <strong>{scenarioInfo.user_role}</strong>, talking to <strong>{scenarioInfo.ai_character}</strong>
+              <strong>You</strong> are talking to <strong>{scenarioInfo.ai_character}</strong>
             </div>
             <div style={{ fontSize: "0.85em", color: "#555", marginTop: "0.5em", fontWeight: 500 }}>
               {scenarioInfo.ai_speaks_first
@@ -459,7 +466,7 @@ const ChatPage: React.FC = () => {
         <ChatContainer
           messages={messages}
           setIsTypingFalse={setIsTypingFalse}
-          userLabel={scenarioInfo?.user_role ? `${scenarioInfo.user_role} (You)` : (urlParams.user_label || projectInfo?.user_label || "You")}
+          userLabel={"You"}
           assistantLabel={scenarioInfo?.ai_character || urlParams.assistant_label || projectInfo?.assistant_label || "Assistant"}
         />
 
