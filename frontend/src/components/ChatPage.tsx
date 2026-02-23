@@ -55,12 +55,14 @@ const ChatPage: React.FC = () => {
       // Send a special init request to create the session
       const debugLevel = parseInt(urlParams.debug_level || (debug ? "2" : "0"));
       const condition = urlParams.condition || "alma";
+      const provider = urlParams.provider || "";
       const initBody: any = {
         participant_id: participantId,
         debug_level: debugLevel,
         round: round,
         condition: condition
       };
+      if (provider) initBody.provider = provider;
       const maxTime = parseInt(urlParams.max_time || "0");
       const maxMessages = parseInt(urlParams.max_messages || "0");
       if (maxTime > 0) initBody.max_time = maxTime;
