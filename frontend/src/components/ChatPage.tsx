@@ -75,17 +75,43 @@ const ChatPage: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         console.log("Session initialized:", data);
-        if (data.scenario_title) {
+        if (data) {
           setScenarioInfo(data);
         }
-        // If AI should speak first, add the opening message
-        if (data.ai_speaks_first && data.opening_message) {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: data.opening_message,
-            type: "text",
-            timestamp: new Date().toISOString()
-          }]);
+        // If AI should speak first, add the opening message (or poll until ready)
+        if (data.ai_speaks_first) {
+          if (data.opening_message) {
+            setMessages(prev => [...prev, {
+              role: "assistant",
+              content: data.opening_message,
+              type: "text",
+              timestamp: new Date().toISOString()
+            }]);
+          } else if (data.opening_pending) {
+            setIsTyping(true);
+            const poll = async () => {
+              try {
+                const res = await fetch(`${allmaUrl}/v1/session/${participantId}/opening`);
+                if (res.ok) {
+                  const payload = await res.json();
+                  if (payload.ready && payload.opening_message) {
+                    setMessages(prev => [...prev, {
+                      role: "assistant",
+                      content: payload.opening_message,
+                      type: "text",
+                      timestamp: new Date().toISOString()
+                    }]);
+                    setIsTyping(false);
+                    return;
+                  }
+                }
+              } catch (e) {
+                console.log("Could not fetch opening message:", e);
+              }
+              setTimeout(poll, 800);
+            };
+            poll();
+          }
         }
       }
     } catch (e) {
