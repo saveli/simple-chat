@@ -6,6 +6,21 @@ import { Message } from "../types";
 import BlinkingDots from "./BlinkingDots";
 import { socket } from "../socket";
 
+const getParentOrigin = (value: unknown): string => {
+  if (typeof value !== "string") return "*";
+
+  try {
+    const url = new URL(value);
+    const normalizedValue = value.replace(/\/$/, "");
+    if ((url.protocol === "http:" || url.protocol === "https:") && url.origin === normalizedValue) {
+      return url.origin;
+    }
+  } catch {
+    // Fall back to unrestricted postMessage for manual/debug use.
+  }
+  return "*";
+};
+
 const ChatPage: React.FC = () => {
   const [sessionId, setSessionId] = useState("");
   const [participantId, setParticipantId] = useState("");
@@ -29,6 +44,8 @@ const ChatPage: React.FC = () => {
 
   // Derived: is this in LimeSurvey iframe mode?
   const isLimeSurvey = urlParams.limesurvey === "1" || urlParams.limesurvey === "true";
+  const isPractice = urlParams.practice === "1";
+  const parentOrigin = getParentOrigin(urlParams.parent_origin);
 
   // Fetch scenario info from aLLMa
   const fetchScenarioInfo = async (participantId: string) => {
@@ -60,7 +77,8 @@ const ChatPage: React.FC = () => {
         participant_id: participantId,
         debug_level: debugLevel,
         round: round,
-        condition: condition
+        condition: condition,
+        practice: isPractice
       };
       if (provider) initBody.provider = provider;
       const maxTime = parseInt(urlParams.max_time || "0");
@@ -147,8 +165,10 @@ const ChatPage: React.FC = () => {
       session_id: sessionId,
       participant_id: participantId,
       reason: reason,
+      ended_at: new Date().toISOString(),
       message_count: messages.length,
-      duration_seconds: durationSeconds
+      duration_seconds: durationSeconds,
+      practice: isPractice
     });
 
     // Notify aLLMa wrapper to persist interaction log
@@ -159,7 +179,7 @@ const ChatPage: React.FC = () => {
       await fetch(`${allmaUrl}/v1/session/${pid}/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason, round })
+        body: JSON.stringify({ reason, round, practice: isPractice })
       });
     } catch (e) {
       console.log("Could not notify aLLMa of session end:", e);
@@ -175,17 +195,18 @@ const ChatPage: React.FC = () => {
           participant_id: participantId,
           message_count: messages.length,
           duration_seconds: durationSeconds,
-          reason: reason
+          reason: reason,
+          practice: isPractice
         }
-      }, "*");
+      }, parentOrigin);
     }
-  }, [chatStartTime, sessionId, participantId, messages.length, urlParams, isLimeSurvey]);
+  }, [chatStartTime, sessionId, participantId, messages.length, urlParams, isLimeSurvey, isPractice, parentOrigin]);
 
   const handleContinueClick = () => {
     window.parent.postMessage({
       type: "simple-chat-event",
       event: "continue_clicked"
-    }, "*");
+    }, parentOrigin);
   };
 
   useEffect(() => {

@@ -371,6 +371,12 @@ async def chat_ended(sid, data):
             type="text",
         )
         the_conversation.messages.append(end_message)
+        the_conversation.ended_reason = data.get("reason")
+        the_conversation.ended_at = data.get("ended_at")
+        the_conversation.message_count = data.get("message_count")
+        the_conversation.duration_seconds = data.get("duration_seconds")
+        the_conversation.participant_id = data.get("participant_id")
+        the_conversation.practice = data.get("practice")
         await the_conversation.save()
 
 

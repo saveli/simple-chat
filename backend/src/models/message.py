@@ -27,7 +27,7 @@ class ConversationMessage(TypedDict):
 class Conversations(Document):
     conversation_id: str
     created_at: str
-    participant_id: str
+    participant_id: Optional[str]
     experiment_id: str
     model: str = Field(..., env="MODEL")
     messages: List[ConversationMessage] = Field(default_factory=list)
@@ -36,6 +36,11 @@ class Conversations(Document):
     multi_rounds: Optional[int] = (
         0  # if it is zero means it is not multi round, if it is 1, 2, ... means there are several rounds.
     )
+    ended_reason: Optional[str] = None
+    ended_at: Optional[str] = None
+    message_count: Optional[int] = None
+    duration_seconds: Optional[int] = None
+    practice: Optional[bool] = None
 
 
 class SearchParameters(Document):
