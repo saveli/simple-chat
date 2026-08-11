@@ -1,8 +1,11 @@
 # Base stage
 FROM node:lts-buster AS build
 
-# Backend URL baked into Parcel bundle at build time
-ARG REACT_APP_BACKEND_URL=http://localhost:8000
+# Optional Socket.IO origin, baked into the Parcel bundle at build time. Leave it
+# empty: nginx.conf proxies both /v1 and /ws, so the bundle talks to its own origin
+# and the same image works on any host without a rebuild. Only set it when serving
+# the dev stage (npm start), which has no nginx in front of it.
+ARG REACT_APP_BACKEND_URL=
 ENV REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
 
 # Set working directory
@@ -28,6 +31,9 @@ RUN echo "production stage"
 
 # Copy built files to Nginx web root
 COPY --from=build /usr/src/app/dist /usr/share/nginx/html
+
+# Serve the SPA and proxy /v1 -> aLLMa wrapper, /ws -> chat backend
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 80
