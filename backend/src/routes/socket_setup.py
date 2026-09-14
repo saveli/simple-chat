@@ -375,7 +375,10 @@ async def chat_ended(sid, data):
         the_conversation.ended_at = data.get("ended_at")
         the_conversation.message_count = data.get("message_count")
         the_conversation.duration_seconds = data.get("duration_seconds")
-        the_conversation.participant_id = data.get("participant_id")
+        # Never blank a stored id: the client may not know it yet.
+        the_conversation.participant_id = (
+            data.get("participant_id") or the_conversation.participant_id
+        )
         the_conversation.practice = data.get("practice")
         await the_conversation.save()
 

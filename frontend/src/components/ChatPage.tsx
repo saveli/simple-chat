@@ -201,6 +201,10 @@ const ChatPage: React.FC = () => {
       }, parentOrigin);
     }
   }, [chatStartTime, sessionId, participantId, messages.length, urlParams, isLimeSurvey, isPractice, parentOrigin]);
+  // Timers must call the current endChat: one armed at chat start holds a
+  // closure from before the participant id arrived and ended the chat with "".
+  const endChatRef = useRef(endChat);
+  endChatRef.current = endChat;
 
   const handleContinueClick = () => {
     window.parent.postMessage({
@@ -322,7 +326,7 @@ const ChatPage: React.FC = () => {
     const maxTime = parseInt(urlParams.max_time || "0");
     if (maxTime > 0) {
       maxTimeTimerRef.current = setTimeout(() => {
-        endChat("max_time");
+        endChatRef.current("max_time");
       }, maxTime * 1000);
     }
 
@@ -334,7 +338,7 @@ const ChatPage: React.FC = () => {
     } else {
       setMinTimeReached(true); // No min_time = always reached
     }
-  }, [chatStartTime, chatEnded, urlParams.max_time, urlParams.min_time, endChat]);
+  }, [chatStartTime, chatEnded, urlParams.max_time, urlParams.min_time]);
 
   // Check max_messages after each message arrives
   useEffect(() => {
