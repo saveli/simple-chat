@@ -475,6 +475,11 @@ const ChatPage: React.FC = () => {
             <div style={{ fontSize: "0.85em", color: "#888", marginTop: "0.5em" }}>
               <strong>You</strong> are talking to <strong>{scenarioInfo.ai_character}</strong>
             </div>
+            {scenarioInfo.ai_personality && (
+              <div style={{ fontSize: "0.85em", color: "#555", marginTop: "0.5em", textAlign: "left" }}>
+                <strong>About {scenarioInfo.ai_character}:</strong> {scenarioInfo.ai_personality}
+              </div>
+            )}
             <div style={{ fontSize: "0.85em", color: "#555", marginTop: "0.5em", fontWeight: 500 }}>
               {scenarioInfo.ai_speaks_first
                 ? `${scenarioInfo.ai_character} starts the conversation.`
