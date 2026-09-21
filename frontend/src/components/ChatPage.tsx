@@ -38,6 +38,9 @@ const ChatPage: React.FC = () => {
   const [chatEnded, setChatEnded] = useState<boolean>(false);
   const chatEndedRef = useRef<boolean>(false); // synchronous guard against multiple endChat calls
   const [chatStartTime, setChatStartTime] = useState<number | null>(null);
+  // The situation is shown first; the chat (and both timers) start on click,
+  // so reading and getting into character do not eat into max_time.
+  const [chatStarted, setChatStarted] = useState<boolean>(false);
   const [minTimeReached, setMinTimeReached] = useState<boolean>(false);
   const maxTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const minTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -206,6 +209,19 @@ const ChatPage: React.FC = () => {
   const endChatRef = useRef(endChat);
   endChatRef.current = endChat;
 
+  const handleStartClick = async () => {
+    if (chatStarted) return;
+    setChatStarted(true);
+    setChatStartTime(Date.now());
+    // The wrapper enforces the same limit from its own clock; restart it too.
+    try {
+      const pid = urlParams.participant_id || participantId;
+      await fetch(`${window.location.origin}/v1/session/${pid}/start`, { method: "POST" });
+    } catch (e) {
+      console.log("Could not notify aLLMa of chat start:", e);
+    }
+  };
+
   const handleContinueClick = () => {
     window.parent.postMessage({
       type: "simple-chat-event",
@@ -262,9 +278,6 @@ const ChatPage: React.FC = () => {
       setIsTyping(false); // user can send message after getting the session id.
       setSessionId(data.session_id);
       await sending_initial_message(data.session_id);
-
-      // Start chat timers
-      setChatStartTime(Date.now());
     });
 
     socket.on("set_participant_id", data => {
@@ -473,14 +486,14 @@ const ChatPage: React.FC = () => {
             <div style={{ fontWeight: "bold", fontSize: "1.1em", marginBottom: "0.5em" }}>
               {scenarioInfo.scenario_title}
             </div>
-            <div style={{ fontSize: "0.9em", color: "#666", fontStyle: "italic" }}>
+            <div style={{ fontSize: chatStarted ? "0.9em" : "1.1em", color: "#666", fontStyle: "italic", textAlign: chatStarted ? "center" : "left" }}>
               {scenarioInfo.scenario_description}
             </div>
             <div style={{ fontSize: "0.85em", color: "#888", marginTop: "0.5em" }}>
               <strong>You</strong> are talking to <strong>{scenarioInfo.ai_character}</strong>
             </div>
             {scenarioInfo.ai_personality && (
-              <div style={{ fontSize: "0.85em", color: "#555", marginTop: "0.5em", textAlign: "left" }}>
+              <div style={{ fontSize: chatStarted ? "0.85em" : "1.05em", color: "#555", marginTop: "0.5em", textAlign: "left" }}>
                 <strong>About {scenarioInfo.ai_character}:</strong> {scenarioInfo.ai_personality}
               </div>
             )}
@@ -503,7 +516,7 @@ const ChatPage: React.FC = () => {
               </div>
             )}
             {/* End Chat link in header */}
-            {canEndChat && (
+            {canEndChat && chatStarted && (
               <div
                 style={{
                   position: "absolute",
@@ -521,6 +534,24 @@ const ChatPage: React.FC = () => {
             )}
           </Box>
         )}
+        {scenarioInfo && !chatStarted ? (
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Take your time to read the situation. The time limit only starts once you click.
+            </Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              disabled={isTyping}
+              onClick={handleStartClick}
+              sx={{ px: 4, py: 1.5, fontSize: "1.1em" }}
+            >
+              Start conversation
+            </Button>
+          </Box>
+        ) : (
+        <>
         <ChatContainer
           messages={messages}
           setIsTypingFalse={setIsTypingFalse}
@@ -575,6 +606,8 @@ const ChatPage: React.FC = () => {
               onEndChat={canEndChat ? () => endChat("user_ended") : undefined}
             />
           </>
+        )}
+        </>
         )}
       </Box>
     </>
