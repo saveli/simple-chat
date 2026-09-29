@@ -32,6 +32,11 @@ RUN echo "production stage"
 # Copy built files to Nginx web root
 COPY --from=build /usr/src/app/dist /usr/share/nginx/html
 
+# Static documents linked from the survey (data protection information sheet).
+# Parcel only bundles referenced assets, so these are copied explicitly. Source of
+# truth is allma/study/ethics/; docs/ here is the served copy.
+COPY docs /usr/share/nginx/html/docs
+
 # Serve the SPA and proxy /v1 -> aLLMa wrapper, /ws -> chat backend
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
