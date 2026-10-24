@@ -44,6 +44,12 @@ const ChatPage: React.FC = () => {
   const [minTimeReached, setMinTimeReached] = useState<boolean>(false);
   const maxTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const minTimeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const openingPollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const openingPollStoppedRef = useRef<boolean>(false);
+  const stopOpeningPoll = () => {
+    openingPollStoppedRef.current = true;
+    if (openingPollTimerRef.current) clearTimeout(openingPollTimerRef.current);
+  };
 
   // Derived: is this in LimeSurvey iframe mode?
   const isLimeSurvey = urlParams.limesurvey === "1" || urlParams.limesurvey === "true";
@@ -110,11 +116,27 @@ const ChatPage: React.FC = () => {
             }]);
           } else if (data.opening_pending) {
             setIsTyping(true);
+            // The opening is a few LLM calls (OpenAI: <=25 s stall budget each,
+            // ollama: a cold model load), so two minutes is generous.
+            const deadline = Date.now() + 120_000;
+            let delay = 500;
+            const fail = (why: string) => {
+              console.log("Opening message unavailable:", why);
+              setIsTyping(false);
+              setMessages(prev => [...prev, {
+                role: "system",
+                content: "Your conversation partner could not be started. Please reload the page. If this keeps happening, contact the study team.",
+                type: "text",
+                timestamp: new Date().toISOString()
+              }]);
+            };
             const poll = async () => {
               try {
                 const res = await fetch(`${allmaUrl}/v1/session/${participantId}/opening`);
+                if (openingPollStoppedRef.current) return;
                 if (res.ok) {
                   const payload = await res.json();
+                  if (openingPollStoppedRef.current) return;
                   if (payload.ready && payload.opening_message) {
                     setMessages(prev => [...prev, {
                       role: "assistant",
@@ -125,11 +147,19 @@ const ChatPage: React.FC = () => {
                     setIsTyping(false);
                     return;
                   }
+                  // Not ready and no longer pending: generation failed.
+                  if (!payload.pending) return fail(payload.failed ? "generation failed" : "already consumed");
+                } else if (res.status < 500) {
+                  // 404: the session is gone (wrapper restart or cleanup).
+                  return fail(`HTTP ${res.status}`);
                 }
               } catch (e) {
                 console.log("Could not fetch opening message:", e);
               }
-              setTimeout(poll, 800);
+              if (openingPollStoppedRef.current) return;
+              if (Date.now() >= deadline) return fail("timed out");
+              openingPollTimerRef.current = setTimeout(poll, delay);
+              delay = Math.min(delay * 1.5, 5000);
             };
             poll();
           }
@@ -150,6 +180,7 @@ const ChatPage: React.FC = () => {
     // Clear timers
     if (maxTimeTimerRef.current) clearTimeout(maxTimeTimerRef.current);
     if (minTimeTimerRef.current) clearTimeout(minTimeTimerRef.current);
+    stopOpeningPoll();
 
     // Add system message locally
     setMessages(prev => [...prev, {
@@ -329,6 +360,7 @@ const ChatPage: React.FC = () => {
       // Cleanup timers on unmount
       if (maxTimeTimerRef.current) clearTimeout(maxTimeTimerRef.current);
       if (minTimeTimerRef.current) clearTimeout(minTimeTimerRef.current);
+      stopOpeningPoll();
     };
   }, []);
 
